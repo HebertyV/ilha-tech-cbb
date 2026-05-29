@@ -130,9 +130,11 @@ import { FormsModule } from '@angular/forms';
           <h3>O que acabou de acontecer?</h3>
           <p>Sem perceber, você resolveu um <strong>Sistema de Equações de 1º Grau</strong> e aplicou regras de precedência!</p>
           <div class="traducao-matematica">
-            <p>$X + X + X = 15$</p>
-            <p>$Z + X * Y = ?$</p>
-          </div>
+            <p>X + X + X = 15</p>
+            <p>X + Y + Y = 25</p>
+            <p>Y - Z = 6</p>
+            <p>Z + X × Y = ?</p>
+          </div
           <p class="conclusao-edtech">Isso é <strong>Tecnologia Educacional</strong>: remover o bloqueio visual para o cérebro focar na lógica.</p>
         </div>
 
