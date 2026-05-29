@@ -37,7 +37,7 @@ import { FormsModule } from '@angular/forms';
         </div>
 
         <div class="creditos">
-          Desenvolvido por Prof. Heberty Vieira Alves
+          Desenvolvido por Prof. Heberty Vieira
         </div>
       </div>
 
