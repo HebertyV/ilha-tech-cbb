@@ -1,7 +1,29 @@
-import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject, PLATFORM_ID } from '@angular/core';
+import { isPlatformBrowser } from '@angular/common';
 import { bootstrapApplication } from '@angular/platform-browser';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { interval, Subscription } from 'rxjs';
+
+// --- Interfaces para type safety ---
+interface LinhaEnigma {
+  eq: string[];
+  res: number;
+}
+
+interface Desafio {
+  titulo: string;
+  linhas: LinhaEnigma[];
+  linhaFinal: string[];
+  resposta: number;
+  explicacao: string[];
+}
+
+interface EntradaRanking {
+  nome: string;
+  tempo: number;
+  tempoVisual: string;
+}
 
 @Component({
   selector: 'app-root',
@@ -57,7 +79,7 @@ import { FormsModule } from '@angular/forms';
 
         <p class="msg-erro" *ngIf="mensagemErro">{{ mensagemErro }}</p>
 
-        <button class="btn-verificar" (click)="verificarResposta()" [disabled]="respostaUsuario === null || respostaUsuario.toString().trim() === ''">
+        <button class="btn-verificar" (click)="verificarResposta()" [disabled]="respostaUsuario === null">
           VERIFICAR RESPOSTA
         </button>
       </div>
@@ -81,7 +103,6 @@ import { FormsModule } from '@angular/forms';
         </div>
 
         <ng-container *ngTemplateOutlet="explicacaoMatematica"></ng-container>
-
         <button class="btn-primario" (click)="reiniciar()">Próximo Jogador</button>
       </div>
 
@@ -93,7 +114,6 @@ import { FormsModule } from '@angular/forms';
         <p style="font-size: 16px; margin-bottom: 20px; color: #b3b9d6;">Parabéns pelo esforço, <strong>{{ nickname }}</strong>! O importante é exercitar o raciocínio.</p>
         
         <ng-container *ngTemplateOutlet="explicacaoMatematica"></ng-container>
-
         <button class="btn-primario" (click)="reiniciar()">Próximo Jogador</button>
       </div>
 
@@ -166,17 +186,24 @@ import { FormsModule } from '@angular/forms';
     .conclusao-edtech { color: #ffd600 !important; font-weight: bold; text-align: center; margin-top: 10px; }
   `]
 })
-export class App implements OnInit {
+export class App implements OnInit, OnDestroy {
   telaAtual = 'inicio';
   nickname = '';
-  
-  tempoSegundos = 0;
-  tempoVisual = '00:00';
-  intervalo: any;
 
-  ranking: Array<{nome: string, tempo: number, tempoVisual: string}> = [];
-  
-  listaDesafios = [
+  // --- Relógio: gerenciado por RxJS, sem setInterval nativo ---
+  tempoSegundos = 0;
+  private subscription: Subscription | null = null;
+
+  // Getter puro: elimina a variável `tempoVisual` duplicada e a função `atualizarRelogio()`
+  get tempoVisual(): string {
+    const min = Math.floor(this.tempoSegundos / 60).toString().padStart(2, '0');
+    const seg = (this.tempoSegundos % 60).toString().padStart(2, '0');
+    return `${min}:${seg}`;
+  }
+
+  ranking: EntradaRanking[] = [];
+
+  readonly listaDesafios: Desafio[] = [
     {
       titulo: 'Lógica Tech',
       linhas: [
@@ -185,7 +212,7 @@ export class App implements OnInit {
         { eq: ['📱', '-', '🖱️'], res: 15 }
       ],
       linhaFinal: ['💻', '+', '📱', '+', '🖱️'],
-      resposta: 35, 
+      resposta: 35,
       explicacao: ['X + X + X = 30', 'X + Y + Y = 50', 'Y - Z = 15', 'X + Y + Z = ?']
     },
     {
@@ -196,7 +223,7 @@ export class App implements OnInit {
         { eq: ['📚', '-', '✏️'], res: 3 }
       ],
       linhaFinal: ['🎒', '+', '📚', '-', '✏️'],
-      resposta: 23, 
+      resposta: 23,
       explicacao: ['X + X + X = 60', 'X + Y + Y = 30', 'Y - Z = 3', 'X + Y - Z = ?']
     },
     {
@@ -207,7 +234,7 @@ export class App implements OnInit {
         { eq: ['🛸', '-', '⭐'], res: 4 }
       ],
       linhaFinal: ['🚀', '+', '🛸', '+', '⭐'],
-      resposta: 13, 
+      resposta: 13,
       explicacao: ['X + X + X = 15', 'X + Y + Y = 17', 'Y - Z = 4', 'X + Y + Z = ?']
     },
     {
@@ -218,7 +245,7 @@ export class App implements OnInit {
         { eq: ['🍔', '+', '🍟'], res: 9 }
       ],
       linhaFinal: ['🍕', '+', '🍔', '+', '🍟'],
-      resposta: 19, 
+      resposta: 19,
       explicacao: ['X + X + X = 30', 'X + Y + Y = 20', 'Y + Z = 9', 'X + Y + Z = ?']
     },
     {
@@ -229,102 +256,116 @@ export class App implements OnInit {
         { eq: ['🧪', '-', '🧬'], res: 2 }
       ],
       linhaFinal: ['🔬', '+', '🧪', '+', '🧬'],
-      resposta: 12, 
+      resposta: 12,
       explicacao: ['X + X + X = 18', 'X + Y + Y = 14', 'Y - Z = 2', 'X + Y + Z = ?']
     }
   ];
 
-  desafioAtual: any = null;
-  ultimoDesafioSorteado = -1;
+  desafioAtual: Desafio | null = null;
+  private ultimoDesafioSorteado = -1;
   respostaUsuario: number | null = null;
   tentativasRestantes = 3;
   mensagemErro = '';
 
-  // INJETANDO O DESPERTADOR AQUI
-  constructor(private cdr: ChangeDetectorRef) {}
+  // PLATFORM_ID garante que localStorage só é acessado no browser (seguro para SSR)
+  private platformId = inject(PLATFORM_ID);
 
   ngOnInit() {
-    const rankingSalvo = localStorage.getItem('ranking_edtech_cbb');
-    if (rankingSalvo) {
-      this.ranking = JSON.parse(rankingSalvo);
+    if (isPlatformBrowser(this.platformId)) {
+      const rankingSalvo = localStorage.getItem('ranking_edtech_cbb');
+      if (rankingSalvo) {
+        try {
+          this.ranking = JSON.parse(rankingSalvo);
+        } catch {
+          this.ranking = [];
+        }
+      }
     }
   }
 
-  atualizarRelogio() {
-    const minutos = Math.floor(this.tempoSegundos / 60).toString().padStart(2, '0');
-    const segundos = (this.tempoSegundos % 60).toString().padStart(2, '0');
-    this.tempoVisual = `${minutos}:${segundos}`;
+  // Chamado quando o componente é destruído — garante que o relógio nunca fique rodando
+  // em background mesmo se o usuário navegar para fora de alguma forma.
+  ngOnDestroy() {
+    this.pararRelogio();
+  }
+
+  private pararRelogio() {
+    this.subscription?.unsubscribe();
+    this.subscription = null;
   }
 
   sortearDesafio() {
-    let novoIndice;
+    let novoIndice: number;
     do {
       novoIndice = Math.floor(Math.random() * this.listaDesafios.length);
     } while (novoIndice === this.ultimoDesafioSorteado);
-    
+
     this.ultimoDesafioSorteado = novoIndice;
     this.desafioAtual = this.listaDesafios[novoIndice];
   }
 
   iniciarJogo(nome: string) {
-    if(nome.trim() !== '') {
-      if (this.intervalo) clearInterval(this.intervalo); // Limpa relógios fantasmas
-      
-      this.nickname = nome;
-      this.telaAtual = 'jogo';
-      this.tempoSegundos = 0;
-      this.tentativasRestantes = 3;
-      this.mensagemErro = '';
-      this.respostaUsuario = null;
-      this.sortearDesafio();
-      this.atualizarRelogio();
-      
-      this.intervalo = setInterval(() => {
-        this.tempoSegundos++;
-        this.atualizarRelogio();
-        this.cdr.detectChanges(); // A MÁGICA VISUAL ACONTECE AQUI
-      }, 1000);
-    }
+    if (nome.trim() === '') return;
+
+    this.pararRelogio(); // Cancela qualquer relógio anterior antes de criar um novo
+
+    this.nickname = nome;
+    this.telaAtual = 'jogo';
+    this.tempoSegundos = 0;
+    this.tentativasRestantes = 3;
+    this.mensagemErro = '';
+    this.respostaUsuario = null;
+    this.sortearDesafio();
+
+    // interval() do RxJS roda dentro do NgZone — view atualiza a cada tick automaticamente
+    this.subscription = interval(1000).subscribe(() => {
+      this.tempoSegundos++;
+      // tempoVisual é um getter: Angular re-calcula na próxima verificação de mudança,
+      // que interval() dispara por rodar dentro da zona.
+    });
   }
 
   verificarResposta() {
-    if (this.respostaUsuario === null) return;
+    if (this.respostaUsuario === null || !this.desafioAtual) return;
 
     if (this.respostaUsuario === this.desafioAtual.resposta) {
-      clearInterval(this.intervalo);
+      this.pararRelogio();
       this.salvarRanking();
       this.telaAtual = 'sucesso';
     } else {
       this.tentativasRestantes--;
       if (this.tentativasRestantes > 0) {
         this.mensagemErro = `❌ Ops! Você ainda tem ${this.tentativasRestantes} chance(s).`;
-        this.respostaUsuario = null; 
+        this.respostaUsuario = null;
       } else {
-        clearInterval(this.intervalo);
+        this.pararRelogio();
         this.telaAtual = 'derrota';
       }
     }
   }
 
   salvarRanking() {
-    this.ranking.push({
+    const entrada: EntradaRanking = {
       nome: this.nickname,
       tempo: this.tempoSegundos,
       tempoVisual: this.tempoVisual
-    });
+    };
+    this.ranking.push(entrada);
     this.ranking.sort((a, b) => a.tempo - b.tempo);
     this.ranking = this.ranking.slice(0, 5);
-    localStorage.setItem('ranking_edtech_cbb', JSON.stringify(this.ranking));
+
+    if (isPlatformBrowser(this.platformId)) {
+      localStorage.setItem('ranking_edtech_cbb', JSON.stringify(this.ranking));
+    }
   }
 
   reiniciar() {
+    this.pararRelogio();
     this.telaAtual = 'inicio';
     this.nickname = '';
     this.respostaUsuario = null;
     this.tempoSegundos = 0;
     this.mensagemErro = '';
-    this.atualizarRelogio();
-    clearInterval(this.intervalo);
   }
 }
 
