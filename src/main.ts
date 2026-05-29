@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
 import { bootstrapApplication } from '@angular/platform-browser';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -176,7 +176,6 @@ export class App implements OnInit {
 
   ranking: Array<{nome: string, tempo: number, tempoVisual: string}> = [];
   
-  // NOVA LÓGICA: BANCO DE DESAFIOS
   listaDesafios = [
     {
       titulo: 'Lógica Tech',
@@ -186,7 +185,7 @@ export class App implements OnInit {
         { eq: ['📱', '-', '🖱️'], res: 15 }
       ],
       linhaFinal: ['💻', '+', '📱', '+', '🖱️'],
-      resposta: 35, // 10+10+10=30 | 10+20+20=50 | 20-5=15 | 10+20+5=35
+      resposta: 35, 
       explicacao: ['X + X + X = 30', 'X + Y + Y = 50', 'Y - Z = 15', 'X + Y + Z = ?']
     },
     {
@@ -197,7 +196,7 @@ export class App implements OnInit {
         { eq: ['📚', '-', '✏️'], res: 3 }
       ],
       linhaFinal: ['🎒', '+', '📚', '-', '✏️'],
-      resposta: 23, // 20+20+20=60 | 20+5+5=30 | 5-2=3 | 20+5-2=23
+      resposta: 23, 
       explicacao: ['X + X + X = 60', 'X + Y + Y = 30', 'Y - Z = 3', 'X + Y - Z = ?']
     },
     {
@@ -208,7 +207,7 @@ export class App implements OnInit {
         { eq: ['🛸', '-', '⭐'], res: 4 }
       ],
       linhaFinal: ['🚀', '+', '🛸', '+', '⭐'],
-      resposta: 13, // 5+5+5=15 | 5+6+6=17 | 6-2=4 | 5+6+2=13
+      resposta: 13, 
       explicacao: ['X + X + X = 15', 'X + Y + Y = 17', 'Y - Z = 4', 'X + Y + Z = ?']
     },
     {
@@ -219,7 +218,7 @@ export class App implements OnInit {
         { eq: ['🍔', '+', '🍟'], res: 9 }
       ],
       linhaFinal: ['🍕', '+', '🍔', '+', '🍟'],
-      resposta: 19, // 10+10+10=30 | 10+5+5=20 | 5+4=9 | 10+5+4=19
+      resposta: 19, 
       explicacao: ['X + X + X = 30', 'X + Y + Y = 20', 'Y + Z = 9', 'X + Y + Z = ?']
     },
     {
@@ -230,7 +229,7 @@ export class App implements OnInit {
         { eq: ['🧪', '-', '🧬'], res: 2 }
       ],
       linhaFinal: ['🔬', '+', '🧪', '+', '🧬'],
-      resposta: 12, // 6+6+6=18 | 6+4+4=14 | 4-2=2 | 6+4+2=12
+      resposta: 12, 
       explicacao: ['X + X + X = 18', 'X + Y + Y = 14', 'Y - Z = 2', 'X + Y + Z = ?']
     }
   ];
@@ -240,6 +239,9 @@ export class App implements OnInit {
   respostaUsuario: number | null = null;
   tentativasRestantes = 3;
   mensagemErro = '';
+
+  // INJETANDO O DESPERTADOR AQUI
+  constructor(private cdr: ChangeDetectorRef) {}
 
   ngOnInit() {
     const rankingSalvo = localStorage.getItem('ranking_edtech_cbb');
@@ -256,7 +258,6 @@ export class App implements OnInit {
 
   sortearDesafio() {
     let novoIndice;
-    // Garante que o desafio atual não será igual ao imediatamente anterior
     do {
       novoIndice = Math.floor(Math.random() * this.listaDesafios.length);
     } while (novoIndice === this.ultimoDesafioSorteado);
@@ -267,6 +268,8 @@ export class App implements OnInit {
 
   iniciarJogo(nome: string) {
     if(nome.trim() !== '') {
+      if (this.intervalo) clearInterval(this.intervalo); // Limpa relógios fantasmas
+      
       this.nickname = nome;
       this.telaAtual = 'jogo';
       this.tempoSegundos = 0;
@@ -279,6 +282,7 @@ export class App implements OnInit {
       this.intervalo = setInterval(() => {
         this.tempoSegundos++;
         this.atualizarRelogio();
+        this.cdr.detectChanges(); // A MÁGICA VISUAL ACONTECE AQUI
       }, 1000);
     }
   }
@@ -294,7 +298,7 @@ export class App implements OnInit {
       this.tentativasRestantes--;
       if (this.tentativasRestantes > 0) {
         this.mensagemErro = `❌ Ops! Você ainda tem ${this.tentativasRestantes} chance(s).`;
-        this.respostaUsuario = null; // Limpa o input para tentar de novo
+        this.respostaUsuario = null; 
       } else {
         clearInterval(this.intervalo);
         this.telaAtual = 'derrota';
